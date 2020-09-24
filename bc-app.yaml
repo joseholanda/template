@@ -1,0 +1,37 @@
+- apiVersion: build.openshift.io/v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      app: ${NOME_APP}-app
+    name: ${NOME_APP}-app
+  spec:
+    failedBuildsHistoryLimit: 3
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${NOME_APP}-app:latest
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      git:
+        uri: ${URL_GIT}
+      type: Git
+    strategy:
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: ${IS_S2I}
+          namespace: openshift
+      type: Source
+    successfulBuildsHistoryLimit: 3
+    triggers:
+    - github:
+        secret: ${SECRET_GITHUB}
+      type: GitHub
+    - generic:
+        secret: ${SECRET_GENERIC}
+      type: Generic
+    - type: ConfigChange
+    - imageChange:
+      type: ImageChange

@@ -1,0 +1,10 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: springdatabase
+  annotations:
+    openshift.io/display-name: SpringBoot + Mysql
+    description: Deploy de uma aplicação SpringBoot com Mysql
+    iconClass: icon-java
+    tags: java,mysql
+objects:

@@ -1,0 +1,361 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: springdatabase
+  annotations:
+    openshift.io/display-name: SpringBoot + Mysql
+    description: Deploy de uma aplicação SpringBoot com Mysql
+    iconClass: icon-java
+    tags: java,mysql
+objects:
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    labels:
+      app: ${NOME_APP}
+    name: ${NOME_APP}-app
+  spec:
+    lookupPolicy:
+      local: false
+- apiVersion: v1
+  kind: Secret
+  stringData:
+    database-name: ${BANCO}
+    database-password: ${SENHA_BANCO}
+    database-root-password: ${SENHA_ROOT}
+    database-user: ${USUARIO_BANCO}
+  metadata:
+    name: ${NOME_APP}-mysql-secret
+  type: Opaque
+- apiVersion: v1
+  kind: Secret
+  stringData:
+    SPRING_DATASOURCE_PASSWORD: ${SENHA_BANCO}
+    SPRING_DATASOURCE_USERNAME: ${USUARIO_BANCO}
+  metadata:
+    name: ${NOME_APP}-app-secret
+  type: Opaque
+- apiVersion: build.openshift.io/v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      app: ${NOME_APP}-app
+    name: ${NOME_APP}-app
+  spec:
+    failedBuildsHistoryLimit: 3
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${NOME_APP}-app:latest
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      git:
+        uri: ${URL_GIT}
+      type: Git
+    strategy:
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: ${IS_S2I}
+          namespace: openshift
+      type: Source
+    successfulBuildsHistoryLimit: 3
+    triggers:
+    - github:
+        secret: ${SECRET_GITHUB}
+      type: GitHub
+    - generic:
+        secret: ${SECRET_GENERIC}
+      type: Generic
+    - type: ConfigChange
+    - imageChange:
+      type: ImageChange
+- apiVersion: apps.openshift.io/v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      app: ${NOME_APP}
+    name: ${NOME_APP}-mysql
+  spec:
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      name: ${NOME_APP}-mysql
+    strategy:
+      activeDeadlineSeconds: 21600
+      recreateParams:
+        timeoutSeconds: 600
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          app: ${NOME_APP}
+          name: ${NOME_APP}-mysql
+      spec:
+        containers:
+        - env:
+          - name: MYSQL_USER
+            valueFrom:
+              secretKeyRef:
+                key: database-user
+                name: ${NOME_APP}-mysql-secret
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: database-password
+                name: ${NOME_APP}-mysql-secret
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: database-root-password
+                name: ${NOME_APP}-mysql-secret
+          - name: MYSQL_DATABASE
+            valueFrom:
+              secretKeyRef:
+                key: database-name
+                name: ${NOME_APP}-mysql-secret
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 3306
+            timeoutSeconds: 1
+          name: ${NOME_APP}-mysql
+          ports:
+          - containerPort: 3306
+            protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+              - /bin/sh
+              - -i
+              - -c
+              - MYSQL_PWD="$MYSQL_PASSWORD" mysql -h 127.0.0.1 -u $MYSQL_USER -D $MYSQL_DATABASE
+                -e 'SELECT 1'
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              memory: 512Mi
+          securityContext:
+            capabilities: {}
+            privileged: false
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /var/lib/mysql/data
+            name: mysql-data
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: mysql-data
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${NOME_APP}-mysql
+        from:
+          kind: ImageStreamTag
+          name: mysql:5.7
+          namespace: openshift
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: apps.openshift.io/v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      app: ${NOME_APP}-app
+    name: ${NOME_APP}-app
+  spec:
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      app: ${NOME_APP}-app
+      deploymentconfig: ${NOME_APP}-app
+    strategy:
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        labels:
+          app: ${NOME_APP}-app
+          deploymentconfig: ${NOME_APP}-app
+      spec:
+        containers:
+        - env:
+          - name: SPRING_DATASOURCE_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: SPRING_DATASOURCE_USERNAME
+                name: ${NOME_APP}-app-secret
+          - name: SPRING_DATASOURCE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: SPRING_DATASOURCE_PASSWORD
+                name: ${NOME_APP}-app-secret
+          - name: SPRING_DATASOURCE_URL
+            value: jdbc:mysql://${NOME_APP}-mysql:3306/${BANCO}
+          imagePullPolicy: Always
+          name: ${NOME_APP}-app
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          - containerPort: 8778
+            protocol: TCP
+          - containerPort: 9779
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+    test: false
+    triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${NOME_APP}-app
+        from:
+          kind: ImageStreamTag
+          name: ${NOME_APP}-app:latest
+      type: ImageChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      template.openshift.io/expose-uri: mysql://{.spec.clusterIP}:{.spec.ports[?(.name=="mysql")].port}
+    labels:
+      app: ${NOME_APP}
+    name: ${NOME_APP}-mysql
+  spec:
+    ports:
+    - name: ${NOME_APP}-mysql
+      port: 3306
+      protocol: TCP
+      targetPort: 3306
+    selector:
+      name: ${NOME_APP}-mysql
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: ${NOME_APP}
+    name: ${NOME_APP}-app
+  spec:
+    ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    - name: 8778-tcp
+      port: 8778
+      protocol: TCP
+      targetPort: 8778
+    - name: 9779-tcp
+      port: 9779
+      protocol: TCP
+      targetPort: 9779
+    selector:
+      app: ${NOME_APP}-app
+      deploymentconfig: ${NOME_APP}-app
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: route.openshift.io/v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/host.generated: "true"
+    labels:
+      app: ${NOME_APP}
+    name: ${NOME_APP}-app
+  spec:
+    host: ${ROTA_URL_APP}
+    port:
+      targetPort: 8080-tcp
+    to:
+      kind: Service
+      name: ${NOME_APP}-app
+      weight: 100
+    wildcardPolicy: None
+parameters:
+- name: ROTA_URL_APP
+  displayName: URL Rota
+  description: URL para acesso a aplicação.
+  required: true
+
+- name: BANCO
+  displayName: Nome Database
+  description: Nome do database dentro do Mysql
+  value: banco
+
+- name: NOME_APP
+  displayName: Nome da Aplicacao
+  description: Nome Da Aplicacao
+  required: true
+
+- name: SENHA_BANCO
+  displayName: Senha Banco
+  description: Senha para acessar o Banco de Dados
+  generate: expression
+  from: '[a-zA-Z0-9]{16}'
+
+- name: SENHA_ROOT
+  displayName: Senha do usuario root
+  description: Senha para acessar o Banco de Dados como root
+  generate: expression
+  from: '[a-zA-Z0-9]{16}'
+
+- name: USUARIO_BANCO
+  displayName: Usuario Banco
+  description: Usuario para acessar o Banco de Dados
+  generate: expression
+  from: '[a-zA-Z0-9]{16}'
+
+- name: URL_GIT
+  displayName: URL GIT
+  description: URL do Git para fazer o clone da aplicacao
+  required: true
+
+- name: IS_S2I
+  displayName: Image Stream Do Build
+  description: Define a Image Stream a ser utilizada. Padrao s2i-java:latest-java11
+  value: s2i-java:latest-java11
+
+- name: SECRET_GITHUB
+  displayName: GitHub Webhook Secret
+  description: GitHub Secret for webhooks
+  generate: expression
+  from: '[a-zA-Z0-9]{40}'
+
+- name: SECRET_GENERIC
+  displayName: Generic Webhook Secret
+  description: Generic Secret for webhooks
+  generate: expression
+  from: '[a-zA-Z0-9]{40}'
