@@ -1,0 +1,9 @@
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    labels:
+      app: ${NOME_APP}
+    name: ${NOME_APP}-app
+  spec:
+    lookupPolicy:
+      local: false

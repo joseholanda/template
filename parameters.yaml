@@ -1,0 +1,55 @@
+parameters:
+- name: ROTA_URL_APP
+  displayName: URL Rota
+  description: URL para acesso a aplicação.
+  required: true
+
+- name: BANCO
+  displayName: Nome Database
+  description: Nome do database dentro do Mysql
+  value: banco
+
+- name: NOME_APP
+  displayName: Nome da Aplicacao
+  description: Nome Da Aplicacao
+  required: true
+
+- name: SENHA_BANCO
+  displayName: Senha Banco
+  description: Senha para acessar o Banco de Dados
+  generate: expression
+  from: '[a-zA-Z0-9]{16}'
+
+- name: SENHA_ROOT
+  displayName: Senha do usuario root
+  description: Senha para acessar o Banco de Dados como root
+  generate: expression
+  from: '[a-zA-Z0-9]{16}'
+
+- name: USUARIO_BANCO
+  displayName: Usuario Banco
+  description: Usuario para acessar o Banco de Dados
+  generate: expression
+  from: '[a-zA-Z0-9]{16}'
+
+- name: URL_GIT
+  displayName: URL GIT
+  description: URL do Git para fazer o clone da aplicacao
+  required: true
+
+- name: IS_S2I
+  displayName: Image Stream Do Build
+  description: Define a Image Stream a ser utilizada. Padrao s2i-java:latest-java11
+  value: s2i-java:latest-java11
+
+- name: SECRET_GITHUB
+  displayName: GitHub Webhook Secret
+  description: GitHub Secret for webhooks
+  generate: expression
+  from: '[a-zA-Z0-9]{40}'
+
+- name: SECRET_GENERIC
+  displayName: Generic Webhook Secret
+  description: Generic Secret for webhooks
+  generate: expression
+  from: '[a-zA-Z0-9]{40}'
